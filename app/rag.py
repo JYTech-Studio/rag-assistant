@@ -46,7 +46,7 @@ class RagEngine:
 
     # ---------------------------------------------------------- 查詢
 
-    def ask(self, question: str, k: int = 4) -> dict:
+    def ask(self, question: str, k: int = 8) -> dict:
         question = (question or "").strip()
         if not question:
             return {"answer": "請輸入問題。", "sources": [], "matches": []}

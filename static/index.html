@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>RAG 知識庫助手</title>
+  <title>跟虛擬的 WJY 聊聊 · AI 分身（RAG）</title>
   <style>
     :root { --bg:#f6f7f9; --card:#fff; --line:#e5e7eb; --ink:#1f2430;
             --muted:#6b7280; --brand:#0d9488; --brand-d:#0f766e; --chip:#ecfdf5; }
@@ -57,15 +57,15 @@
 </head>
 <body>
   <header>
-    <h1>📚 RAG 知識庫助手</h1>
-    <p class="sub">上傳文件，用自然語言提問，AI 會根據文件內容回答並標出來源。
-      Python · FastAPI · fastembed · Gemini</p>
+    <h1>🤖 跟虛擬的 WJY 聊聊</h1>
+    <p class="sub">這是WJY的「AI 分身」：它讀過他的技術履歷，會根據真實資料回答關於他的技術棧、專案與工作流程，並標出來源、絕不亂掰。
+      由他親手用 Python · FastAPI · fastembed · Gemini 打造的 RAG 系統驅動。</p>
   </header>
 
   <div class="grid">
     <!-- 左：知識來源 -->
     <div class="card">
-      <h2>📁 知識來源</h2>
+      <h2>📁 我讀過的資料</h2>
       <div id="drop" class="drop">
         拖放檔案到這裡，或<u>點擊上傳</u><br />
         <small>支援 PDF / Word / txt / md</small>
@@ -82,10 +82,10 @@
         <button id="clear" class="ghost">清除對話</button>
       </div>
       <div id="msgs" class="msgs">
-        <div class="msg ai">嗨！先在左邊上傳文件，再到下面問我問題吧。</div>
+        <div class="msg ai">嗨！我是WJY的 AI 分身 🤖 我讀過他的技術履歷，問我他的技術棧、做過哪些專案、怎麼工作都可以。（也能從左邊丟新文件給我學。）</div>
       </div>
       <div class="inputbar">
-        <input id="q" type="text" placeholder="輸入問題，例如：請假流程是什麼？"
+        <input id="q" type="text" placeholder="例如：他會 Python 嗎？做過哪些專案？"
                autocomplete="off" />
         <button id="send">送出</button>
       </div>
@@ -194,7 +194,7 @@
     };
     $("#clear").onclick = () => {
       msgs.innerHTML = "";
-      addMsg("嗨！先在左邊上傳文件，再到下面問我問題吧。", "ai");
+      addMsg("嗨！我是WJY的 AI 分身 🤖 我讀過他的技術履歷，問我他的技術棧、做過哪些專案、怎麼工作都可以。（也能從左邊丟新文件給我學。）", "ai");
     };
 
     refreshSources();

@@ -42,7 +42,7 @@ app = FastAPI(title="RAG 知識庫助手", version="0.1.0", lifespan=lifespan)
 
 class AskRequest(BaseModel):
     question: str
-    k: int = 4
+    k: int = 8
 
 
 @app.get("/health")

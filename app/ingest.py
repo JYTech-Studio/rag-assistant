@@ -55,8 +55,8 @@ def chunk_text(
     text: str,
     source: str,
     *,
-    chunk_size: int = 320,
-    overlap: int = 60,
+    chunk_size: int = 500,
+    overlap: int = 80,
 ) -> list[Chunk]:
     """把長文字切成有重疊的小段。
 
