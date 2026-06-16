@@ -28,7 +28,7 @@
 | 文件解析 | pypdf、python-docx |
 | Embedding | fastembed（ONNX，本機推論，模型 `bge-small-zh`，中文檢索佳又輕量） |
 | 向量檢索 | numpy cosine 相似度（demo 規模足夠；可換 FAISS 擴充） |
-| LLM | Google Gemini（`google-genai` SDK，預設 `gemini-2.5-flash`，免費方案） |
+| LLM | Google Gemini（`google-genai` SDK，預設 `gemini-2.5-flash-lite`，免費方案） |
 | 部署 | Docker（多階段相依預載）+ Render |
 
 ## 專案結構
@@ -73,7 +73,7 @@ uvicorn app.main:app --reload
 
 1. 推上 GitHub。
 2. Render → New Web Service → 連這個 repo，選 **Docker**。
-3. 環境變數設 `ANTHROPIC_API_KEY`。
+3. 環境變數設 `GEMINI_API_KEY`（可另設 `GEMINI_MODEL`，預設 `gemini-2.5-flash-lite`）。
 4. 完成。Dockerfile 已在 build 時預載 embedding 模型，冷啟動較快。
 
 > 免費方案閒置會休眠，首次載入需數十秒喚醒。

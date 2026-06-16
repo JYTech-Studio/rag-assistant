@@ -17,7 +17,7 @@ from google.genai import types
 
 from app.ingest import Chunk
 
-MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash-lite")
 
 SYSTEM_PROMPT = """你是WJY（JYTech-Studio）的「AI 分身」，代表他回答訪客（通常是面試官或潛在客戶）的提問。
 你只能根據提供的「參考資料」（包含他的技術履歷與專案資料）回答。
