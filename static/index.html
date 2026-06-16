@@ -48,6 +48,11 @@
              padding:0 18px; font-size:14px; font-weight:600; cursor:pointer; }
     button:hover { background:var(--brand-d); }
     button:disabled { opacity:.5; cursor:default; }
+    .chathead { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
+    .chathead h2 { margin:0; }
+    .ghost { background:transparent; color:var(--muted); border:1px solid var(--line);
+             padding:5px 12px; font-size:13px; font-weight:500; }
+    .ghost:hover { background:#f3f4f6; color:var(--ink); }
   </style>
 </head>
 <body>
@@ -72,7 +77,10 @@
 
     <!-- 右：問答 -->
     <div class="card chat">
-      <h2>💬 問答</h2>
+      <div class="chathead">
+        <h2>💬 問答</h2>
+        <button id="clear" class="ghost">清除對話</button>
+      </div>
       <div id="msgs" class="msgs">
         <div class="msg ai">嗨！先在左邊上傳文件，再到下面問我問題吧。</div>
       </div>
@@ -178,6 +186,10 @@
     };
     $("#send").onclick = ask;
     $("#q").onkeydown = (e) => e.key === "Enter" && ask();
+    $("#clear").onclick = () => {
+      msgs.innerHTML = "";
+      addMsg("嗨！先在左邊上傳文件，再到下面問我問題吧。", "ai");
+    };
 
     refreshSources();
   </script>
