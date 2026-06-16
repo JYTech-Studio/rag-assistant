@@ -10,6 +10,8 @@
 - 💬 自然語言問答，答案**只根據上傳的文件**，找不到就明說、不亂掰
 - 📎 每則回答標出**引用來源**，並可展開實際檢索到的段落與相似度分數
 - 🚀 開箱即用：啟動時自動載入範例知識庫，一打開就能問
+- 🗑️ 可刪除單一文件，**即時生效不需重啟**；預載的範例文件受保護不可刪（顯示 🔒）
+- 🔑 **管理密碼保護**：設了 `ADMIN_TOKEN` 後，上傳／刪除需密碼，問答仍對所有人開放（適合公開 demo）
 
 ## 運作原理（RAG）
 
@@ -59,6 +61,14 @@ uvicorn app.main:app --reload
 申請金鑰（免費、免綁信用卡）：<https://aistudio.google.com/apikey>。
 未設金鑰時仍可上傳與檢索，只是無法生成 AI 答案。
 
+**環境變數**（見 `.env.example`）：
+
+| 變數 | 說明 |
+|------|------|
+| `GEMINI_API_KEY` | Gemini 金鑰；未設則無法生成 AI 答案 |
+| `GEMINI_MODEL`   | 使用的模型，預設 `gemini-2.5-flash-lite` |
+| `ADMIN_TOKEN`    | 管理密碼。**設了**才需密碼才能上傳／刪除；**留空**則不限制（本機開發方便）。公開部署務必設定 |
+
 ### 用 `run.sh` 快速重啟
 
 啟動後若改了知識庫文件，需重啟 server 才會生效（執行中的 process 不會自動重載資料）。`run.sh` 會自動停掉舊 process 再啟動（port `8099`）：
@@ -74,9 +84,13 @@ uvicorn app.main:app --reload
 
 | 方法 | 路徑 | 說明 |
 |------|------|------|
-| `GET`  | `/api/status` | 知識庫現況（段數、來源） |
-| `POST` | `/api/upload` | 上傳文件（multipart `file`），建索引 |
-| `POST` | `/api/ask`    | `{"question": "..."}` → `{answer, sources, matches}` |
+| `GET`    | `/api/status`     | 知識庫現況（段數、來源、受保護文件、是否需密碼） |
+| `POST`   | `/api/upload`     | 上傳文件（multipart `file`），建索引 🔑 |
+| `DELETE` | `/api/document`   | 刪除某份文件（`?source=檔名`）🔑 |
+| `GET`    | `/api/auth/check` | 驗證管理密碼 |
+| `POST`   | `/api/ask`        | `{"question": "..."}` → `{answer, sources, matches}` |
+
+🔑 標記的端點在設了 `ADMIN_TOKEN` 時，需帶 `X-Admin-Token: <密碼>` 標頭。
 
 其他系統（如 Next.js）可直接 `fetch` 這些端點整合，不需共用程式碼。
 
@@ -85,9 +99,11 @@ uvicorn app.main:app --reload
 1. 推上 GitHub。
 2. Render → New Web Service → 連這個 repo，選 **Docker**。
 3. 環境變數設 `GEMINI_API_KEY`（可另設 `GEMINI_MODEL`，預設 `gemini-2.5-flash-lite`）。
-4. 完成。Dockerfile 已在 build 時預載 embedding 模型，冷啟動較快。
+4. **設 `ADMIN_TOKEN`**＝自訂密碼，否則公開站台任何人都能上傳／刪除文件。
+5. 完成。Dockerfile 已在 build 時預載 embedding 模型，冷啟動較快。
 
 > 免費方案閒置會休眠，首次載入需數十秒喚醒。
+> 本機 `.env` 不會上傳到雲端，Render 的環境變數需在 Dashboard → Environment 另外設定。
 
 ## 授權
 
