@@ -132,9 +132,12 @@
       }
     }
 
+    let busy = false;
     async function ask() {
+      if (busy) return;                  // 送出中，避免重複提問
       const q = $("#q").value.trim();
       if (!q) return;
+      busy = true;
       $("#q").value = "";
       addMsg(q, "me");
       const thinking = addMsg("思考中…", "ai");
@@ -172,6 +175,7 @@
         thinking.textContent = "❌ 發生錯誤：" + e.message;
       } finally {
         $("#send").disabled = false;
+        busy = false;
       }
     }
 
@@ -185,7 +189,9 @@
       if (e.dataTransfer.files[0]) uploadFile(e.dataTransfer.files[0]);
     };
     $("#send").onclick = ask;
-    $("#q").onkeydown = (e) => e.key === "Enter" && ask();
+    $("#q").onkeydown = (e) => {
+      if (e.key === "Enter" && !e.isComposing) ask();  // 中文選字的 Enter 不送出
+    };
     $("#clear").onclick = () => {
       msgs.innerHTML = "";
       addMsg("嗨！先在左邊上傳文件，再到下面問我問題吧。", "ai");

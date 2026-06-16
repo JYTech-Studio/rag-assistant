@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import os
+import time
 
 from google import genai
 from google.genai import types
@@ -54,18 +55,28 @@ def answer(question: str, contexts: list[tuple[Chunk, float]]) -> str:
     if not contexts:
         return "目前知識庫是空的，請先上傳文件再提問。"
 
-    try:
-        resp = _get_client().models.generate_content(
-            model=MODEL,
-            contents=build_user_prompt(question, contexts),
-            config=types.GenerateContentConfig(
-                system_instruction=SYSTEM_PROMPT,
-                max_output_tokens=1024,
-            ),
-        )
-        return (resp.text or "").strip()
-    except Exception as exc:  # 沒設 key、額度用完、網路問題等 → 優雅降級
-        return (
-            "⚠️ 暫時無法生成 AI 答案："
-            f"{exc}\n（請確認已設定 GEMINI_API_KEY；下方仍可看到檢索到的相關段落。）"
-        )
+    prompt = build_user_prompt(question, contexts)
+    last_exc: Exception | None = None
+    for attempt in range(3):  # 冷啟動 socket 未就緒、503 等暫時性錯誤 → 自動重試
+        try:
+            resp = _get_client().models.generate_content(
+                model=MODEL,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    system_instruction=SYSTEM_PROMPT,
+                    max_output_tokens=1024,
+                ),
+            )
+            return (resp.text or "").strip()
+        except Exception as exc:
+            last_exc = exc
+            global _client
+            _client = None  # 連線壞掉就丟掉重建（如 Bad file descriptor）
+            if attempt < 2:
+                time.sleep(0.8 * (attempt + 1))
+
+    # 三次都失敗 → 優雅降級，下方仍可看到檢索段落
+    return (
+        "⚠️ 暫時無法生成 AI 答案："
+        f"{last_exc}\n（請確認已設定 GEMINI_API_KEY；下方仍可看到檢索到的相關段落。）"
+    )
