@@ -59,6 +59,17 @@ uvicorn app.main:app --reload
 申請金鑰（免費、免綁信用卡）：<https://aistudio.google.com/apikey>。
 未設金鑰時仍可上傳與檢索，只是無法生成 AI 答案。
 
+### 用 `run.sh` 快速重啟
+
+啟動後若改了知識庫文件，需重啟 server 才會生效（執行中的 process 不會自動重載資料）。`run.sh` 會自動停掉舊 process 再啟動（port `8099`）：
+
+```bash
+./run.sh            # 一般重啟（停舊的 → 啟動）
+./run.sh --fresh    # 順便清掉 index（data/），換過 sample_docs 文件後用這個
+./run.sh --reload   # 開發模式，改 app/ 程式碼自動重啟
+./run.sh --fresh --reload   # 可併用
+```
+
 ## API
 
 | 方法 | 路徑 | 說明 |
