@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>RAG 知識庫助手</title>
+  <style>
+    :root { --bg:#f6f7f9; --card:#fff; --line:#e5e7eb; --ink:#1f2430;
+            --muted:#6b7280; --brand:#0d9488; --brand-d:#0f766e; --chip:#ecfdf5; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family:-apple-system,"PingFang TC",sans-serif;
+           background:var(--bg); color:var(--ink); }
+    header { padding:28px 20px 8px; max-width:980px; margin:0 auto; }
+    h1 { font-size:24px; margin:0; }
+    .sub { color:var(--muted); margin:6px 0 0; font-size:14px; }
+    .grid { max-width:980px; margin:18px auto 60px; padding:0 20px;
+            display:grid; grid-template-columns:320px 1fr; gap:18px; }
+    @media (max-width:760px){ .grid{ grid-template-columns:1fr; } }
+    .card { background:var(--card); border:1px solid var(--line);
+            border-radius:14px; padding:18px; }
+    .card h2 { font-size:15px; margin:0 0 12px; }
+    .drop { border:2px dashed #cbd5e1; border-radius:12px; padding:22px 14px;
+            text-align:center; color:var(--muted); cursor:pointer; font-size:14px;
+            transition:.15s; }
+    .drop:hover,.drop.over { border-color:var(--brand); background:var(--chip); color:var(--brand-d); }
+    .sources { list-style:none; padding:0; margin:14px 0 0; }
+    .sources li { font-size:13px; padding:7px 10px; background:#f9fafb;
+                  border:1px solid var(--line); border-radius:8px; margin-bottom:6px;
+                  display:flex; gap:8px; align-items:center; }
+    .empty { color:var(--muted); font-size:13px; }
+    .chat { display:flex; flex-direction:column; min-height:420px; }
+    .msgs { flex:1; overflow-y:auto; display:flex; flex-direction:column; gap:14px; }
+    .msg { max-width:88%; padding:11px 14px; border-radius:12px; font-size:14px;
+           line-height:1.6; white-space:pre-wrap; }
+    .me { align-self:flex-end; background:var(--brand); color:#fff; border-bottom-right-radius:3px; }
+    .ai { align-self:flex-start; background:#f3f4f6; border-bottom-left-radius:3px; }
+    .srcrow { margin-top:8px; display:flex; flex-wrap:wrap; gap:6px; }
+    .chip { font-size:12px; background:var(--chip); color:var(--brand-d);
+            border:1px solid #99f6e4; border-radius:999px; padding:2px 9px; }
+    details { margin-top:8px; font-size:12px; color:var(--muted); }
+    details pre { white-space:pre-wrap; background:#fafafa; border:1px solid var(--line);
+                  border-radius:8px; padding:8px; margin:6px 0 0; }
+    .inputbar { display:flex; gap:8px; margin-top:14px; }
+    .inputbar input { flex:1; padding:11px 14px; border:1px solid var(--line);
+                      border-radius:10px; font-size:14px; }
+    .inputbar input:focus { outline:none; border-color:var(--brand); }
+    button { background:var(--brand); color:#fff; border:0; border-radius:10px;
+             padding:0 18px; font-size:14px; font-weight:600; cursor:pointer; }
+    button:hover { background:var(--brand-d); }
+    button:disabled { opacity:.5; cursor:default; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>📚 RAG 知識庫助手</h1>
+    <p class="sub">上傳文件，用自然語言提問，AI 會根據文件內容回答並標出來源。
+      Python · FastAPI · fastembed · Gemini</p>
+  </header>
+
+  <div class="grid">
+    <!-- 左：知識來源 -->
+    <div class="card">
+      <h2>📁 知識來源</h2>
+      <div id="drop" class="drop">
+        拖放檔案到這裡，或<u>點擊上傳</u><br />
+        <small>支援 PDF / Word / txt / md</small>
+      </div>
+      <input id="file" type="file" accept=".pdf,.docx,.txt,.md" hidden />
+      <ul id="sources" class="sources"></ul>
+      <p id="srcEmpty" class="empty">尚無文件，先上傳一份試試。</p>
+    </div>
+
+    <!-- 右：問答 -->
+    <div class="card chat">
+      <h2>💬 問答</h2>
+      <div id="msgs" class="msgs">
+        <div class="msg ai">嗨！先在左邊上傳文件，再到下面問我問題吧。</div>
+      </div>
+      <div class="inputbar">
+        <input id="q" type="text" placeholder="輸入問題，例如：請假流程是什麼？"
+               autocomplete="off" />
+        <button id="send">送出</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const $ = (s) => document.querySelector(s);
+    const msgs = $("#msgs"), drop = $("#drop"), fileInput = $("#file");
+
+    function addMsg(text, who, extra) {
+      const div = document.createElement("div");
+      div.className = "msg " + who;
+      div.textContent = text;
+      if (extra) div.appendChild(extra);
+      msgs.appendChild(div);
+      msgs.scrollTop = msgs.scrollHeight;
+      return div;
+    }
+
+    async function refreshSources() {
+      const r = await fetch("/api/status").then((r) => r.json());
+      const ul = $("#sources");
+      ul.innerHTML = "";
+      (r.sources || []).forEach((s) => {
+        const li = document.createElement("li");
+        li.textContent = "📄 " + s;
+        ul.appendChild(li);
+      });
+      $("#srcEmpty").style.display = r.sources && r.sources.length ? "none" : "block";
+    }
+
+    async function uploadFile(f) {
+      const tip = addMsg(`上傳「${f.name}」中…`, "ai");
+      const fd = new FormData();
+      fd.append("file", f);
+      try {
+        const r = await fetch("/api/upload", { method: "POST", body: fd }).then((r) => r.json());
+        if (r.detail) throw new Error(r.detail);
+        tip.textContent = `✅ 已學習「${r.filename}」，切成 ${r.chunks} 段。可以開始提問了。`;
+        refreshSources();
+      } catch (e) {
+        tip.textContent = "❌ 上傳失敗：" + e.message;
+      }
+    }
+
+    async function ask() {
+      const q = $("#q").value.trim();
+      if (!q) return;
+      $("#q").value = "";
+      addMsg(q, "me");
+      const thinking = addMsg("思考中…", "ai");
+      $("#send").disabled = true;
+      try {
+        const r = await fetch("/api/ask", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ question: q }),
+        }).then((r) => r.json());
+
+        thinking.textContent = r.answer || "（沒有回應）";
+        if (r.sources && r.sources.length) {
+          const row = document.createElement("div");
+          row.className = "srcrow";
+          r.sources.forEach((s) => {
+            const c = document.createElement("span");
+            c.className = "chip";
+            c.textContent = "📎 " + s;
+            row.appendChild(c);
+          });
+          thinking.appendChild(row);
+        }
+        if (r.matches && r.matches.length) {
+          const det = document.createElement("details");
+          det.innerHTML = "<summary>檢索到的段落（" + r.matches.length + "）</summary>";
+          r.matches.forEach((m) => {
+            const pre = document.createElement("pre");
+            pre.textContent = `[${m.score}] ${m.source}\n${m.preview}…`;
+            det.appendChild(pre);
+          });
+          thinking.appendChild(det);
+        }
+      } catch (e) {
+        thinking.textContent = "❌ 發生錯誤：" + e.message;
+      } finally {
+        $("#send").disabled = false;
+      }
+    }
+
+    drop.onclick = () => fileInput.click();
+    fileInput.onchange = () => fileInput.files[0] && uploadFile(fileInput.files[0]);
+    drop.ondragover = (e) => { e.preventDefault(); drop.classList.add("over"); };
+    drop.ondragleave = () => drop.classList.remove("over");
+    drop.ondrop = (e) => {
+      e.preventDefault();
+      drop.classList.remove("over");
+      if (e.dataTransfer.files[0]) uploadFile(e.dataTransfer.files[0]);
+    };
+    $("#send").onclick = ask;
+    $("#q").onkeydown = (e) => e.key === "Enter" && ask();
+
+    refreshSources();
+  </script>
+</body>
+</html>
