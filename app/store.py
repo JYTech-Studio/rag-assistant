@@ -48,6 +48,16 @@ class VectorStore:
         top = np.argsort(-scores)[:k]
         return [(self.chunks[i], float(scores[i])) for i in top]
 
+    def remove_source(self, source: str) -> int:
+        """移除某個來源檔的所有段落，回傳移除了幾段（0 代表查無此來源）。"""
+        keep = [i for i, c in enumerate(self.chunks) if c.source != source]
+        removed = len(self.chunks) - len(keep)
+        if removed == 0:
+            return 0
+        self.chunks = [self.chunks[i] for i in keep]
+        self.matrix = self.matrix[keep] if (self.matrix is not None and keep) else None
+        return removed
+
     def clear(self) -> None:
         self.chunks = []
         self.matrix = None
@@ -61,8 +71,11 @@ class VectorStore:
             json.dumps([asdict(c) for c in self.chunks], ensure_ascii=False),
             encoding="utf-8",
         )
+        mn = d / "matrix.npy"
         if self.matrix is not None:
-            np.save(d / "matrix.npy", self.matrix)
+            np.save(mn, self.matrix)
+        elif mn.exists():
+            mn.unlink()  # 已刪光，別讓舊向量殘留在磁碟
 
     def load(self, dir_path: str | Path) -> bool:
         """讀回先前存的知識庫；沒有就回 False。"""

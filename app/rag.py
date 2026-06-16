@@ -44,6 +44,13 @@ class RagEngine:
                 loaded += 1
         return loaded
 
+    def delete_document(self, source: str) -> int:
+        """從知識庫移除某份文件的所有段落，回傳移除幾段；變更即存回磁碟。"""
+        removed = self.store.remove_source(source)
+        if removed:
+            self.store.save(self.data_dir)
+        return removed
+
     # ---------------------------------------------------------- 查詢
 
     def ask(self, question: str, k: int = 8) -> dict:

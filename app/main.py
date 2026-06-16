@@ -3,17 +3,20 @@
 - GET  /            內建 demo 問答介面
 - GET  /health      健康檢查
 - GET  /api/status  知識庫現況（幾段、哪些來源）
-- POST /api/upload  上傳文件、建索引
+- POST /api/upload  上傳文件、建索引（設了 ADMIN_TOKEN 時需帶 X-Admin-Token 標頭）
+- DELETE /api/document  刪除某份文件（?source=檔名；同樣需管理密鑰）
+- GET  /api/auth/check  驗證管理密碼
 - POST /api/ask     提問 → 回答 + 來源 + 命中段落
 """
 
 from __future__ import annotations
 
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, Header, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
@@ -27,7 +30,16 @@ STATIC_DIR = BASE_DIR / "static"
 DATA_DIR = BASE_DIR / "data"
 SAMPLES_DIR = BASE_DIR / "sample_docs"
 
+# 管理密鑰：設了才需要密碼才能上傳/刪除（雲端務必設）；沒設則不限制（本機開發方便）
+ADMIN_TOKEN = (os.getenv("ADMIN_TOKEN") or "").strip()
+
 engine = RagEngine(DATA_DIR)
+
+
+def _require_admin(token: str | None) -> None:
+    """未設 ADMIN_TOKEN 時不限制；設了就要帶對的密鑰。"""
+    if ADMIN_TOKEN and token != ADMIN_TOKEN:
+        raise HTTPException(status_code=401, detail="需要管理密碼才能上傳或刪除文件。")
 
 
 @asynccontextmanager
@@ -55,13 +67,32 @@ def index() -> FileResponse:
     return FileResponse(STATIC_DIR / "index.html")
 
 
+def _is_protected(source: str) -> bool:
+    """預載的範例文件（sample_docs 裡帶的）不可刪。"""
+    return (SAMPLES_DIR / Path(source).name).is_file()
+
+
 @app.get("/api/status")
 def status() -> dict:
-    return engine.status()
+    st = engine.status()
+    st["protected"] = [s for s in st["sources"] if _is_protected(s)]
+    st["auth_required"] = bool(ADMIN_TOKEN)
+    return st
+
+
+@app.get("/api/auth/check")
+def auth_check(x_admin_token: str | None = Header(default=None)) -> dict:
+    """驗證管理密碼是否正確（前端解鎖管理模式時用）。"""
+    _require_admin(x_admin_token)
+    return {"ok": True}
 
 
 @app.post("/api/upload")
-async def upload(file: UploadFile = File(...)) -> dict:
+async def upload(
+    file: UploadFile = File(...),
+    x_admin_token: str | None = Header(default=None),
+) -> dict:
+    _require_admin(x_admin_token)
     filename = file.filename or ""
     if not filename.lower().endswith(tuple(SUPPORTED)):
         raise HTTPException(
@@ -74,6 +105,21 @@ async def upload(file: UploadFile = File(...)) -> dict:
     except Exception as exc:  # 解析失敗等
         raise HTTPException(status_code=400, detail=f"處理失敗：{exc}") from exc
     return {"filename": filename, "chunks": added, **engine.status()}
+
+
+@app.delete("/api/document")
+def delete_document(
+    source: str, x_admin_token: str | None = Header(default=None)
+) -> dict:
+    _require_admin(x_admin_token)
+    if _is_protected(source):
+        raise HTTPException(
+            status_code=403, detail=f"「{source}」是預載的範例文件，不可刪除。"
+        )
+    removed = engine.delete_document(source)
+    if removed == 0:
+        raise HTTPException(status_code=404, detail=f"找不到文件：{source}")
+    return {"removed": removed, "source": source, **engine.status()}
 
 
 @app.post("/api/ask")

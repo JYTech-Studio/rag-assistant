@@ -27,6 +27,11 @@
     .sources li { font-size:13px; padding:7px 10px; background:#f9fafb;
                   border:1px solid var(--line); border-radius:8px; margin-bottom:6px;
                   display:flex; gap:8px; align-items:center; }
+    .sources li .name { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .del { background:transparent; color:var(--muted); border:0; padding:0 4px;
+           font-size:15px; line-height:1; cursor:pointer; flex:none; }
+    .del:hover { background:transparent; color:#dc2626; }
+    .lock { flex:none; font-size:12px; opacity:.55; }
     .empty { color:var(--muted); font-size:13px; }
     .chat { display:flex; flex-direction:column; min-height:420px; }
     .msgs { flex:1; overflow-y:auto; display:flex; flex-direction:column; gap:14px; }
@@ -65,7 +70,10 @@
   <div class="grid">
     <!-- 左：知識來源 -->
     <div class="card">
-      <h2>📁 我讀過的資料</h2>
+      <div class="chathead">
+        <h2>📁 我讀過的資料</h2>
+        <button id="admin" class="ghost" style="display:none">🔑 管理</button>
+      </div>
       <div id="drop" class="drop">
         拖放檔案到這裡，或<u>點擊上傳</u><br />
         <small>支援 PDF / Word / txt / md</small>
@@ -82,7 +90,7 @@
         <button id="clear" class="ghost">清除對話</button>
       </div>
       <div id="msgs" class="msgs">
-        <div class="msg ai">嗨！我是WJY的 AI 分身 🤖 我讀過他的技術履歷，問我他的技術棧、做過哪些專案、怎麼工作都可以。（也能從左邊丟新文件給我學。）</div>
+        <div class="msg ai">嗨！我是WJY的 AI 分身 🤖 我讀過他的技術履歷，問我他的技術棧、做過哪些專案、怎麼工作都可以。</div>
       </div>
       <div class="inputbar">
         <input id="q" type="text" placeholder="例如：他會 Python 嗎？做過哪些專案？"
@@ -96,6 +104,12 @@
     const $ = (s) => document.querySelector(s);
     const msgs = $("#msgs"), drop = $("#drop"), fileInput = $("#file");
 
+    // 管理模式：設了 ADMIN_TOKEN 的話，上傳/刪除要帶密鑰
+    let authRequired = false;
+    let adminToken = localStorage.getItem("adminToken") || "";
+    const canEdit = () => !authRequired || !!adminToken;
+    const adminHeaders = () => (adminToken ? { "X-Admin-Token": adminToken } : {});
+
     function addMsg(text, who, extra) {
       const div = document.createElement("div");
       div.className = "msg " + who;
@@ -108,14 +122,84 @@
 
     async function refreshSources() {
       const r = await fetch("/api/status").then((r) => r.json());
+      authRequired = !!r.auth_required;
+      const editable = canEdit();
+
+      // 上傳區與「管理」鈕的顯示
+      drop.style.display = editable ? "" : "none";
+      const adminBtn = $("#admin");
+      adminBtn.style.display = authRequired ? "" : "none";
+      adminBtn.textContent = adminToken ? "🔓 登出管理" : "🔑 管理";
+
       const ul = $("#sources");
       ul.innerHTML = "";
+      const protectedSet = new Set(r.protected || []);
       (r.sources || []).forEach((s) => {
         const li = document.createElement("li");
-        li.textContent = "📄 " + s;
+        const name = document.createElement("span");
+        name.className = "name";
+        name.textContent = "📄 " + s;
+        li.appendChild(name);
+        if (protectedSet.has(s)) {
+          const lock = document.createElement("span");
+          lock.className = "lock";
+          lock.title = "預載文件，不可刪除";
+          lock.textContent = "🔒";
+          li.appendChild(lock);
+        } else if (editable) {
+          const del = document.createElement("button");
+          del.className = "del";
+          del.title = "刪除這份文件";
+          del.textContent = "✕";
+          del.onclick = () => deleteSource(s);
+          li.appendChild(del);
+        }
         ul.appendChild(li);
       });
-      $("#srcEmpty").style.display = r.sources && r.sources.length ? "none" : "block";
+      $("#srcEmpty").style.display =
+        editable && !(r.sources && r.sources.length) ? "block" : "none";
+    }
+
+    async function toggleAdmin() {
+      if (adminToken) {                       // 已登入 → 登出
+        adminToken = "";
+        localStorage.removeItem("adminToken");
+        await refreshSources();
+        return;
+      }
+      const pw = prompt("請輸入管理密碼：");
+      if (!pw) return;
+      try {
+        const res = await fetch("/api/auth/check", { headers: { "X-Admin-Token": pw } });
+        if (!res.ok) throw new Error();
+        adminToken = pw;
+        localStorage.setItem("adminToken", pw);
+        await refreshSources();
+      } catch {
+        alert("密碼錯誤。");
+      }
+    }
+
+    function handleAuthExpired() {
+      adminToken = "";
+      localStorage.removeItem("adminToken");
+      refreshSources();
+    }
+
+    async function deleteSource(s) {
+      if (!confirm(`確定要刪除「${s}」嗎？此動作無法復原。`)) return;
+      try {
+        const resp = await fetch("/api/document?source=" + encodeURIComponent(s), {
+          method: "DELETE",
+          headers: adminHeaders(),
+        });
+        const r = await resp.json();
+        if (resp.status === 401) handleAuthExpired();
+        if (r.detail) throw new Error(r.detail);
+        await refreshSources();
+      } catch (e) {
+        alert("刪除失敗：" + e.message);
+      }
     }
 
     async function uploadFile(f) {
@@ -123,7 +207,9 @@
       const fd = new FormData();
       fd.append("file", f);
       try {
-        const r = await fetch("/api/upload", { method: "POST", body: fd }).then((r) => r.json());
+        const resp = await fetch("/api/upload", { method: "POST", body: fd, headers: adminHeaders() });
+        const r = await resp.json();
+        if (resp.status === 401) handleAuthExpired();
         if (r.detail) throw new Error(r.detail);
         tip.textContent = `✅ 已學習「${r.filename}」，切成 ${r.chunks} 段。可以開始提問了。`;
         refreshSources();
@@ -188,13 +274,14 @@
       drop.classList.remove("over");
       if (e.dataTransfer.files[0]) uploadFile(e.dataTransfer.files[0]);
     };
+    $("#admin").onclick = toggleAdmin;
     $("#send").onclick = ask;
     $("#q").onkeydown = (e) => {
       if (e.key === "Enter" && !e.isComposing) ask();  // 中文選字的 Enter 不送出
     };
     $("#clear").onclick = () => {
       msgs.innerHTML = "";
-      addMsg("嗨！我是WJY的 AI 分身 🤖 我讀過他的技術履歷，問我他的技術棧、做過哪些專案、怎麼工作都可以。（也能從左邊丟新文件給我學。）", "ai");
+      addMsg("嗨！我是WJY的 AI 分身 🤖 我讀過他的技術履歷，問我他的技術棧、做過哪些專案、怎麼工作都可以。", "ai");
     };
 
     refreshSources();
