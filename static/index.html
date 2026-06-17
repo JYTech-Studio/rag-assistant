@@ -58,6 +58,21 @@
     .ghost { background:transparent; color:var(--muted); border:1px solid var(--line);
              padding:5px 12px; font-size:13px; font-weight:500; }
     .ghost:hover { background:#f3f4f6; color:var(--ink); }
+    /* LLM 切換自訂下拉（原生 select 不能放圖，故自製） */
+    .provsel { position:relative; }
+    .provbtn { display:flex; align-items:center; gap:6px; }
+    .provmenu { position:absolute; right:0; top:calc(100% + 4px); background:#fff;
+                border:1px solid var(--line); border-radius:10px; padding:4px;
+                min-width:160px; box-shadow:0 8px 24px rgba(0,0,0,.12); z-index:20; }
+    .provopt { display:flex; align-items:center; gap:8px; padding:8px 10px;
+               border-radius:7px; font-size:13px; color:var(--ink); cursor:pointer;
+               white-space:nowrap; }
+    .provopt:hover { background:#f3f4f6; }
+    .provopt .check { margin-left:auto; color:var(--brand); opacity:0; }
+    .provopt.sel .check { opacity:1; }
+    .provicon { width:15px; height:15px; flex:none; display:inline-flex; }
+    .provicon svg { width:100%; height:100%; display:block; }
+    .caret { opacity:.45; font-size:11px; }
   </style>
 </head>
 <body>
@@ -87,7 +102,14 @@
     <div class="card chat">
       <div class="chathead">
         <h2>💬 問答</h2>
-        <button id="clear" class="ghost">清除對話</button>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <div id="providerWrap" class="provsel" style="display:none">
+            <button id="provBtn" class="ghost provbtn"
+                    title="切換回答用的 LLM（僅管理員）"></button>
+            <div id="provMenu" class="provmenu" style="display:none"></div>
+          </div>
+          <button id="clear" class="ghost">清除對話</button>
+        </div>
       </div>
       <div id="msgs" class="msgs">
         <div class="msg ai">嗨！我是WJY的 AI 分身 🤖 我讀過他的技術履歷，問我他的技術棧、做過哪些專案、怎麼工作都可以。</div>
@@ -107,6 +129,62 @@
     // 管理模式：設了 ADMIN_TOKEN 的話，上傳/刪除要帶密鑰
     let authRequired = false;
     let adminToken = localStorage.getItem("adminToken") || "";
+    let selectedProvider = "";  // 管理員選的 LLM；空字串=用伺服器預設
+    let providersData = { providers: [], labels: {}, default: "gemini" };
+
+    // 各模型的官方標誌（內嵌 SVG，不抓外部圖）
+    const PROVIDER_ICONS = {
+      gemini:
+        '<svg viewBox="0 0 24 24"><defs><linearGradient id="gmi" x1="0" y1="0" x2="1" y2="1">' +
+        '<stop offset="0" stop-color="#4796E3"/><stop offset=".5" stop-color="#9177C7"/>' +
+        '<stop offset="1" stop-color="#D96570"/></linearGradient></defs>' +
+        '<path d="M12 0c.4 6.6 5 11.2 12 12-7 .8-11.6 5.4-12 12-.4-6.6-5-11.2-12-12 7-.8 11.6-5.4 12-12z" fill="url(#gmi)"/></svg>',
+      claude:
+        '<svg viewBox="0 0 24 24"><g fill="#D97757">' +
+        '<rect x="11" y="0" width="2" height="24" rx="1"/>' +
+        '<rect x="0" y="11" width="24" height="2" rx="1"/>' +
+        '<rect x="11" y="0" width="2" height="24" rx="1" transform="rotate(45 12 12)"/>' +
+        '<rect x="11" y="0" width="2" height="24" rx="1" transform="rotate(-45 12 12)"/>' +
+        '<rect x="11" y="3" width="2" height="18" rx="1" transform="rotate(22.5 12 12)"/>' +
+        '<rect x="11" y="3" width="2" height="18" rx="1" transform="rotate(-22.5 12 12)"/>' +
+        '<rect x="11" y="3" width="2" height="18" rx="1" transform="rotate(67.5 12 12)"/>' +
+        '<rect x="11" y="3" width="2" height="18" rx="1" transform="rotate(-67.5 12 12)"/>' +
+        "</g></svg>",
+    };
+    const provIcon = (p) =>
+      '<span class="provicon">' + (PROVIDER_ICONS[p] || "🧠") + "</span>";
+
+    // 畫出 LLM 切換鈕與選單；只有「管理模式 + ≥2 家可用」才顯示
+    function renderProviderMenu() {
+      const wrap = $("#providerWrap");
+      const { providers, labels, default: def } = providersData;
+      const show = !!adminToken && providers.length > 1;
+      wrap.style.display = show ? "" : "none";
+      if (!show) {
+        selectedProvider = "";  // 非管理模式 → 一律用伺服器預設
+        return;
+      }
+      if (!providers.includes(selectedProvider)) selectedProvider = def;
+      const cur = selectedProvider;
+      $("#provBtn").innerHTML =
+        provIcon(cur) + "<span>" + (labels[cur] || cur) + "</span><span class='caret'>▾</span>";
+      const menu = $("#provMenu");
+      menu.innerHTML = "";
+      providers.forEach((p) => {
+        const opt = document.createElement("div");
+        opt.className = "provopt" + (p === cur ? " sel" : "");
+        opt.innerHTML =
+          provIcon(p) +
+          "<span>" + (labels[p] || p) + (p === def ? "（預設）" : "") + "</span>" +
+          "<span class='check'>✓</span>";
+        opt.onclick = () => {
+          selectedProvider = p;
+          menu.style.display = "none";
+          renderProviderMenu();
+        };
+        menu.appendChild(opt);
+      });
+    }
     const canEdit = () => !authRequired || !!adminToken;
     const adminHeaders = () => (adminToken ? { "X-Admin-Token": adminToken } : {});
 
@@ -130,6 +208,14 @@
       const adminBtn = $("#admin");
       adminBtn.style.display = authRequired ? "" : "none";
       adminBtn.textContent = adminToken ? "🔓 登出管理" : "🔑 管理";
+
+      // LLM 切換：記下供應商資料，交給 renderProviderMenu() 畫（含 logo）
+      providersData = {
+        providers: r.providers || [],
+        labels: r.provider_labels || {},
+        default: r.default_provider,
+      };
+      renderProviderMenu();
 
       const ul = $("#sources");
       ul.innerHTML = "";
@@ -229,10 +315,17 @@
       const thinking = addMsg("思考中…", "ai");
       $("#send").disabled = true;
       try {
+        // 只有管理員選了非預設供應商時才帶 provider（連同管理密鑰）
+        const body = { question: q };
+        const headers = { "Content-Type": "application/json" };
+        if (selectedProvider) {
+          body.provider = selectedProvider;
+          Object.assign(headers, adminHeaders());
+        }
         const r = await fetch("/api/ask", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ question: q }),
+          headers,
+          body: JSON.stringify(body),
         }).then((r) => r.json());
 
         thinking.textContent = r.answer || "（沒有回應）";
@@ -275,6 +368,12 @@
       if (e.dataTransfer.files[0]) uploadFile(e.dataTransfer.files[0]);
     };
     $("#admin").onclick = toggleAdmin;
+    $("#provBtn").onclick = (e) => {
+      e.stopPropagation();
+      const m = $("#provMenu");
+      m.style.display = m.style.display === "none" ? "" : "none";
+    };
+    document.addEventListener("click", () => { $("#provMenu").style.display = "none"; });
     $("#send").onclick = ask;
     $("#q").onkeydown = (e) => {
       if (e.key === "Enter" && !e.isComposing) ask();  // 中文選字的 Enter 不送出

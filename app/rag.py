@@ -53,14 +53,14 @@ class RagEngine:
 
     # ---------------------------------------------------------- 查詢
 
-    def ask(self, question: str, k: int = 8) -> dict:
+    def ask(self, question: str, k: int = 8, provider: str | None = None) -> dict:
         question = (question or "").strip()
         if not question:
             return {"answer": "請輸入問題。", "sources": [], "matches": []}
 
         query_vec = embed([question])[0]
         hits = self.store.search(query_vec, k=k)
-        answer_text = llm.answer(question, hits)
+        answer_text = llm.answer(question, hits, provider=provider)
 
         sources = list(dict.fromkeys(chunk.source for chunk, _ in hits))
         matches = [

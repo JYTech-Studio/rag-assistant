@@ -6,4 +6,5 @@ python-docx
 fastembed
 numpy
 google-genai
+anthropic
 python-dotenv

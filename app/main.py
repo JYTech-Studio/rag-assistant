@@ -22,6 +22,7 @@ from pydantic import BaseModel
 
 load_dotenv()  # 讀取 .env 裡的 GEMINI_API_KEY（雲端用環境變數時這行不影響）
 
+from app import llm
 from app.ingest import SUPPORTED
 from app.rag import RagEngine
 
@@ -55,6 +56,7 @@ app = FastAPI(title="RAG 知識庫助手", version="0.1.0", lifespan=lifespan)
 class AskRequest(BaseModel):
     question: str
     k: int = 8
+    provider: str | None = None  # 僅管理員可指定（gemini / claude），否則用預設
 
 
 @app.get("/health")
@@ -77,6 +79,10 @@ def status() -> dict:
     st = engine.status()
     st["protected"] = [s for s in st["sources"] if _is_protected(s)]
     st["auth_required"] = bool(ADMIN_TOKEN)
+    # 供前端管理模式切換 LLM 用：可用供應商清單 + 友善名稱 + 預設
+    st["providers"] = llm.available_providers()
+    st["provider_labels"] = llm.PROVIDER_LABELS
+    st["default_provider"] = llm.DEFAULT_PROVIDER
     return st
 
 
@@ -123,5 +129,14 @@ def delete_document(
 
 
 @app.post("/api/ask")
-def ask(req: AskRequest) -> dict:
-    return engine.ask(req.question, k=req.k)
+def ask(
+    req: AskRequest, x_admin_token: str | None = Header(default=None)
+) -> dict:
+    # 指定 provider 屬管理員權限；訪客一律用伺服器預設供應商
+    if req.provider:
+        _require_admin(x_admin_token)
+        if req.provider not in llm.available_providers():
+            raise HTTPException(
+                status_code=400, detail=f"供應商不可用：{req.provider}"
+            )
+    return engine.ask(req.question, k=req.k, provider=req.provider)
